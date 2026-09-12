@@ -1,0 +1,41 @@
+{
+  "name": "shaderlab",
+  "productName": "ShaderLab",
+  "version": "1.0.0",
+  "description": "ShaderLab — 一个 Unity 风格的多语言 Shader 实验库（WebGL2 / WebGPU 双内核，可打包为 Windows 桌面应用）",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "desktop:dev": "node scripts/dev-desktop.mjs",
+    "desktop:build": "npm run build && electron-builder --win",
+    "gen:icon": "node scripts/gen-icon.mjs"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/commands": "^6.11.0",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.7.4",
+    "@codemirror/view": "^6.43.11",
+    "@lezer/highlight": "^1.2.3",
+    "@shaderfrog/glsl-parser": "^7.0.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "@webgpu/types": "^0.1.72",
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
+    "png2icons": "^2.0.1",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.0"
+  }
+}

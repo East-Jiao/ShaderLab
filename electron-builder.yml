@@ -1,0 +1,26 @@
+appId: com.hydranemo.shaderlab
+productName: ShaderLab
+copyright: ShaderLab
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**
+  - electron/**
+asar: true
+compression: maximum
+win:
+  target:
+    - target: nsis
+    - target: portable
+  icon: build/icon.ico
+  artifactName: ${productName}-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: ShaderLab
+  artifactName: ${productName}-${version}-setup.${ext}
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}
