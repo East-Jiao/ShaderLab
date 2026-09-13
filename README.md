@@ -10,13 +10,17 @@
 
 ## ✨ 功能总览
 
-### 1. 预设库（33 个游戏常用 Shader，全部可实时调参）
+### 1. 预设库（49 个游戏常用 Shader，全部可实时调参）
 
 | 分类 | 预设 |
 | --- | --- |
-| **2D / 全屏** | 霓虹流光 Plasma · 星云 Nebula · 体积云 Raymarch · 水焦散(Shadertoy) · 朱利亚分形(WebGL1) · 火焰 Flame · 极光 Aurora · 星际穿梭 Warp · SDF 陀螺体 Raymarch · 像素抖动画(HLSL) · ToySL 自定义语言演示 · WGSL 等离子(WebGPU) |
-| **3D 材质** | 卡通渲染+反向壳描边+阴影(双Pass) · 标准 PBR 光照(GGX+IBL+ACES+阴影) · 顶点动画水面 · 全息投影(加法混合) · 噪声消融 Dissolve · MatCap 球贴材质 · 菲涅尔边缘光 · 旗帜飘动(顶点动画) · 受击闪白 HitFlash · 法线调试(WebGL1) · **法线贴图(TBN 切线空间)** · WGSL 卡通材质(WebGPU) |
-| **后处理** | 辉光 Bloom(mip 链) · 暗角+噪点+色差 · 调色 Color Grading · 深度法线描边(Outline) · 像素化 Pixelate · CRT 显示器(Shadertoy) · 水下扭曲 · 径向模糊 · 雪景叠加 Snowfall |
+| **2D / 全屏** | 霓虹流光 Plasma · 星云 Nebula · 体积云 Raymarch · 水焦散(Shadertoy) · 朱利亚分形(WebGL1) · 火焰 Flame · 极光 Aurora · 星际穿梭 Warp · SDF 陀螺体 Raymarch · 雨滴涟漪 RainRipples · 程序化天空 ProceduralSky · 河流 Flowmap · 冲击波 Shockwave · **色带阶梯天空 PosterizeSky** · **螺旋能量涡旋 Vortex** · **花瓣粒子系统 Petals** · 像素抖动画(HLSL) · ToySL 自定义语言演示 · WGSL 等离子(WebGPU) |
+| **3D 材质** | 卡通渲染+反向壳描边+阴影(双Pass) · 标准 PBR 光照(GGX+IBL+ACES+阴影) · 顶点动画水面 · Gerstner 海面 Ocean · 全息投影(加法混合) · 噪声消融 Dissolve · MatCap 球贴材质 · 菲涅尔边缘光 · 旗帜飘动(顶点动画) · 受击闪白 HitFlash · 法线调试(WebGL1) · 法线贴图(TBN 切线空间) · **Ramp 色阶着色 RampToon** · **各向异性高光 KajiyaKay** · **面部 SDF 阴影** · **MatCap 混合金属 MatCapBlend** · **风格化卡通水面 StylizedWater** · WGSL 卡通材质(WebGPU) |
+| **后处理** | 辉光 Bloom(mip 链) · 暗角+噪点+色差 · 调色 Color Grading · 深度法线描边(Outline) · 像素化 Pixelate · CRT 显示器(Shadertoy) · 水下扭曲 · 径向模糊 · 雪景叠加 Snowfall · 景深 DepthOfField · 信号故障 Glitch · 圆形转场 CircleWipe |
+
+**二游（原神/鸣潮）专题**参考了社区公开的渲染拆解（面部 SDF 阈值、Ramp 暗部混色、Kajiya-Kay
+头发高光、武器 MatCap 混合、风格化量化水面），配合程序化生成的 **Ramp 渐变条**与**脸部阴影 SDF**
+两张纹理即可完整体验，无需外部素材。
 
 每个预设带 **技术文档**（右侧"文档"页）与 **自动反射的参数面板**（滑条 / 颜色选择器 / 纹理下拉框，
 由 uniform 反射 + 源码 `// @range / @color / @default` 注解共同生成）。
@@ -49,8 +53,9 @@
 - **中央视口**：轨道相机（左键旋转 / 滚轮缩放）· FPS/DrawCall/三角形统计浮层 · 编译错误覆盖层 · WebGL2/WebGPU 双画布自动切换
 - **右面板（检查器）**：自动生成的 uniform 控件（含重置/随机化）· 性能统计 · 录制设置 · 预设文档页
 - **底部面板**（可拖拽调整高度）：
-  - **代码**：CodeMirror 6 编辑器（GLSL/HLSL/WGSL 自定义高亮、错误行标记、点击跳转、多 Pass 切换、
-    **查看转译产物**、载入模板、Ctrl+Enter 应用编译、Ctrl+S 另存预设）
+  - **代码**：CodeMirror 6 编辑器（GLSL/HLSL/WGSL 自定义高亮、**上下文感知自动补全**——内置函数/类型/
+    按场景分类的内核 uniform、错误行标记、点击跳转、多 Pass 切换、**实时编译**（输入停顿自动应用，
+    可关闭）、**查看转译产物**、载入模板、Ctrl+Enter 应用编译、Ctrl+S 另存预设）
   - **控制台**：分级日志（信息/成功/GPU/警告）、**导出日志 .log**、清空
   - **AI 助手**（本地启发式，无需联网）：
     - 💡 **解释**：解析代码生成结构化讲解（uniform 推测用途、函数功能、循环/采样热点、性能提示）
@@ -82,7 +87,21 @@
 - **数学库（`math.ts`）**：四元数全套（Shoemake 1985 Slerp，极角退化自动转 Nlerp）、`compose` TRS 组合、
   帧率无关指数阻尼 `damp`、反 Z 无限远投影 `perspectiveReversedZInfinite`（UE/Unity 现代深度方案）
 - **轨道相机**带业界手感的指数阻尼（输入写目标值、渲染帧率无关逼近），预设切换不漂移
-- 自检系统：`?selftest=1` 逐个编译+渲染全部预设，输出 `window.__SELFTEST__`（当前 **33/33 通过**）
+- 自检系统：`?selftest=1` 逐个编译+渲染全部预设并**采样视口像素**（捕捉黑屏/NaN 类回归），
+  输出 `window.__SELFTEST__`（当前 **49/49 通过**）
+
+### 已修复的重要内核 bug（记录备查）
+
+1. **Shadertoy 兼容层 uniform 未供应**：`iTime/iResolution/iMouse` 声明了但从未赋值，
+   所有 Shadertoy 预设冻结在第 0 帧且除以 0 产生 NaN —— 现由内核每帧自动填充。
+2. **持久化状态污染内置 uniform**：旧版本曾把 `iResolution` 当用户 uniform（默认 [0,0,0]）存入
+   localStorage，新版渲染时又被覆盖回 0 —— 现在 `bindUserUniforms` 拒绝一切内置 uniform 的用户值。
+3. **后处理场景 iChannel0 未绑定场景纹理**：CRT 等 Shadertoy 后处理预设拿到的 iChannel0 是
+   棋盘格而非场景颜色 —— 现在后处理场景自动把 iChannel0/1/2 绑定为 场景颜色/法线/深度。
+4. **水焦散算法错误**：转写经典 caustics 时漏掉了 `mod(uv·TAU, TAU) - 250` 大偏移（防分母趋零
+   爆炸）与迭代反馈 `i = p + f(i)`，导致全屏饱和成白色 —— 已按 Dave Hoskins 原版修正。
+5. **几何体三角形环绕方向与法线相反**：背面剔除后看到的是"内表面"，光照全错 ——
+   `fixWinding` 按属性法线自动翻转全部网格。
 
 ### 6. 算法与论文出处（按内核使用位置）
 

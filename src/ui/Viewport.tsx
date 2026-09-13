@@ -13,6 +13,7 @@ export function Viewport({ onReady }: { onReady?: () => void }) {
   const compileOk = useStore((s) => s.compileOk);
   const passReports = useStore((s) => s.passReports);
   const presetId = useStore((s) => s.presetId);
+  const presetName = useStore((s) => s.presetName);
   const [bridgeReady, setBridgeReady] = useState(false);
   const [gpuError, setGpuError] = useState<string | null>(null);
 
@@ -62,7 +63,7 @@ export function Viewport({ onReady }: { onReady?: () => void }) {
             <div className="chip">Draw {stats.draws} · 三角形 {stats.tris.toLocaleString()}</div>
           </>
         )}
-        <div className="chip">{presetId}</div>
+        <div className="chip" title={presetId}>{presetName || presetId}</div>
       </div>
       <div className="hint">左键拖拽旋转 · 滚轮缩放</div>
       {compileOk === false && errors.length > 0 && (

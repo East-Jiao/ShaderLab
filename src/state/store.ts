@@ -19,6 +19,7 @@ export interface Stats {
 interface AppState {
   theme: 'dark' | 'light';
   presetId: string;
+  presetName: string;
   myPresetIds: string[];
   // 编辑器（用户源码 = 预设 pass 副本）
   passes: PassDef[];
@@ -38,6 +39,8 @@ interface AppState {
   showFps: boolean;
   /** 网格预设的几何体覆盖（'auto' = 使用预设自带） */
   geometryOverride: string;
+  /** 编辑器实时编译（输入停顿后自动应用） */
+  liveCompile: boolean;
   // 布局
   leftW: number;
   rightW: number;
@@ -64,6 +67,7 @@ interface AppState {
   setResScale: (s: number) => void;
   setShowFps: (s: boolean) => void;
   setGeometryOverride: (g: string) => void;
+  setLiveCompile: (v: boolean) => void;
   setLayout: (k: 'leftW' | 'rightW' | 'bottomH', v: number) => void;
   setBottomTab: (t: 'code' | 'console' | 'assist') => void;
   setRightTab: (t: 'inspector' | 'docs') => void;
@@ -79,6 +83,7 @@ export const useStore = create<AppState>()(
     (set) => ({
       theme: 'dark',
       presetId: 'fs-neon-plasma',
+      presetName: '',
       myPresetIds: [],
       passes: [],
       activePass: 0,
@@ -93,6 +98,7 @@ export const useStore = create<AppState>()(
       resScale: 1,
       showFps: true,
       geometryOverride: 'auto',
+      liveCompile: true,
       leftW: 260,
       rightW: 320,
       bottomH: 300,
@@ -105,7 +111,7 @@ export const useStore = create<AppState>()(
       setTheme: (t) => set({ theme: t }),
       toggleTheme: () => set((s) => ({ theme: s.theme === 'dark' ? 'light' : 'dark' })),
       loadPresetState: (preset) =>
-        set({ presetId: preset.id, passes: preset.passes.map((p) => ({ ...p })), activePass: 0, dirty: false, compileOk: null, passReports: [], metas: [] }),
+        set({ presetId: preset.id, presetName: preset.name, passes: preset.passes.map((p) => ({ ...p })), activePass: 0, dirty: false, compileOk: null, passReports: [], metas: [] }),
       setPassCode: (idx, part, code) =>
         set((s) => ({
           passes: s.passes.map((p, i) => (i === idx ? { ...p, [part]: code } : p)),
@@ -129,6 +135,7 @@ export const useStore = create<AppState>()(
       setResScale: (v) => set({ resScale: v }),
       setShowFps: (v) => set({ showFps: v }),
       setGeometryOverride: (g) => set({ geometryOverride: g }),
+      setLiveCompile: (v) => set({ liveCompile: v }),
       setLayout: (k, v) => set({ [k]: v } as Partial<AppState>),
       setBottomTab: (t) => set({ bottomTab: t }),
       setRightTab: (t) => set({ rightTab: t }),
@@ -151,6 +158,7 @@ export const useStore = create<AppState>()(
         resScale: s.resScale,
         showFps: s.showFps,
         geometryOverride: s.geometryOverride,
+        liveCompile: s.liveCompile,
         leftW: s.leftW,
         rightW: s.rightW,
         bottomH: s.bottomH,

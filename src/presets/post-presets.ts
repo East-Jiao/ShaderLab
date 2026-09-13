@@ -441,4 +441,156 @@ void main() {
       ],
     },
   },
+  {
+    id: 'post-dof',
+    name: '景深 DepthOfField',
+    category: 'post',
+    language: 'glsl3',
+    tags: ['后处理', '镜头', '电影感'],
+    scene: { kind: 'post' },
+    passes: [
+      {
+        name: '合成',
+        vs: '',
+        fs: POST_HEAD + `
+uniform float uFocusDist;  // @range 2 14 @default 6.0
+uniform float uFocusRange; // @range 0.5 6 @default 2.2
+uniform float uMaxRadius;  // @range 0 8 @default 4.0
+
+// 深度线性化（与描边预设同一方法）
+float linearDepth(vec2 uv) {
+  float d = texture(uSceneDepth, uv).r;
+  float ndc = d * 2.0 - 1.0;
+  return (2.0 * uNear * uFar) / (uFar + uNear - ndc * (uFar - uNear));
+}
+
+void main() {
+  float depth = linearDepth(vUV);
+  // CoC（弥散圆）：焦点处 0，偏离按比例放大
+  float coc = clamp(abs(depth - uFocusDist) / uFocusRange, 0.0, 1.0) * uMaxRadius;
+  vec3 col;
+  if (coc < 0.4) {
+    col = texture(uSceneTex, vUV).rgb;   // 焦点内直接采样
+  } else {
+    // 12 点泊松盘可变半径模糊（黄金角打散避免方向伪影）
+    col = vec3(0.0);
+    for (int i = 0; i < 12; i++) {
+      float a = float(i) * 0.5236 + float(i) * 0.618;
+      float rr = sqrt(float(i) / 12.0) * 0.022;
+      vec2 offs = vec2(cos(a), sin(a)) * rr * coc;
+      col += texture(uSceneTex, vUV + offs).rgb;
+    }
+    col /= 12.0;
+  }
+  fragColor = vec4(col, 1.0);
+}`,
+      },
+    ],
+    docs: {
+      summary: '深度驱动景深：线性化深度图计算弥散圆（CoC），焦点清晰、前后景按 CoC 半径泊松盘模糊。过场动画/剧情镜头的必备镜头语言。',
+      detail: [
+        'CoC = clamp(|depth - 焦距| / 对焦范围) —— 真实相机模型是光圈/像距的函数，这里用简化线性版',
+        '12 点泊松盘 + 面积均匀分布（sqrt(i/N)），单 Pass 可变半径模糊',
+        '拖 uFocusDist 观察焦点在画廊三个物体间转移；商业引擎会用分离的两半模糊 + 前后景合成',
+      ],
+    },
+  },
+  {
+    id: 'post-glitch',
+    name: '信号故障 Glitch',
+    category: 'post',
+    language: 'glsl3',
+    tags: ['后处理', '风格化', '科幻'],
+    scene: { kind: 'post' },
+    passes: [
+      {
+        name: '合成',
+        vs: '',
+        fs: POST_HEAD + `
+uniform float uIntensity; // @range 0 1 @default 0.35
+uniform float uSpeed;     // @range 1 20 @default 8.0
+
+float hash11(float n) { return fract(sin(n) * 43758.5453); }
+float hash12(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+void main() {
+  vec2 uv = vUV;
+  float t = floor(uTime * uSpeed);            // 时间量化成"帧"，故障按帧跳变
+  float gOn = step(1.0 - uIntensity * 0.9, hash11(t)); // 本帧是否处于故障
+  // 1) 行段水平撕裂：按行块随机位移
+  float band = floor(uv.y * 24.0 + hash11(t + 1.7) * 64.0);
+  float shift = (hash12(vec2(band, t)) - 0.5) * 0.16 * uIntensity * (0.25 + gOn);
+  uv.x += shift;
+  // 2) RGB 色散（故障时加剧）
+  float ca = 0.0012 + 0.008 * uIntensity * gOn;
+  vec3 col;
+  col.r = texture(uSceneTex, uv + vec2(ca, 0.0)).r;
+  col.g = texture(uSceneTex, uv).g;
+  col.b = texture(uSceneTex, uv - vec2(ca, 0.0)).b;
+  // 3) 雪花噪点（故障帧概率触发）
+  float snow = step(0.996 - uIntensity * 0.025 * gOn, hash12(vUV * uResolution + t));
+  col = mix(col, vec3(hash12(vUV * 91.7 + t)), snow * 0.85);
+  // 4) 轻扫描线
+  col *= 0.94 + 0.06 * sin(vUV.y * uResolution.y * 1.2);
+  fragColor = vec4(col, 1.0);
+}`,
+      },
+    ],
+    docs: {
+      summary: '数字信号故障：时间量化成"帧"驱动随机撕裂行位移 + RGB 色散 + 雪花噪点。黑客/赛博朋克风格的传送、受干扰、入侵特效。',
+      detail: [
+        't = floor(time·speed)：所有随机数以"帧号"为种子，故障按帧跳变而非连续漂移',
+        'gOn = step(...)：部分时间片完全正常，部分剧烈故障 —— 有节奏感',
+        '行块位移用 hash(行块, 帧号)，每条横带独立撕开',
+      ],
+    },
+  },
+  {
+    id: 'post-circle-wipe',
+    name: '圆形转场 CircleWipe',
+    category: 'post',
+    language: 'glsl3',
+    tags: ['后处理', '转场', 'UI'],
+    scene: { kind: 'post' },
+    passes: [
+      {
+        name: '合成',
+        vs: '',
+        fs: POST_HEAD + `
+uniform float uProgress;   // @range 0 1 @default 0.5
+uniform float uSoftness;   // @range 0.01 0.3 @default 0.08
+uniform vec3  uWipeColor;  // @color @default 0.05 0.06 0.12
+uniform float uInvert;     // @range 0 1 @default 0.0
+
+void main() {
+  float aspect = uResolution.x / uResolution.y;
+  vec2 p = (vUV - 0.5) * vec2(aspect, 1.0);
+  float r = length(p);
+  float maxR = length(vec2(aspect * 0.5, 0.5));
+  // 正向：0→1 圆形展开收拢；uInvert=1 时反向
+  float pr = mix(uProgress, 1.0 - uProgress, uInvert);
+  float edge0 = pr * (maxR + uSoftness * 2.0);
+  float mask = smoothstep(edge0, edge0 - uSoftness, r);      // 圆内 = 1
+  vec3 scene = texture(uSceneTex, vUV).rgb;
+  float ring = smoothstep(edge0 - uSoftness, edge0, r)
+             * smoothstep(edge0 + uSoftness, edge0, r);      // 转场发光边
+  vec3 col = mix(uWipeColor, scene, mask);
+  col += uWipeColor * 5.0 * ring;
+  fragColor = vec4(col, 1.0);
+}`,
+      },
+    ],
+    docs: {
+      summary: '圆形转场遮罩：进度 0→1 圆形展开再收拢，柔边 + 发光过渡环。关卡切换/传送/角色死亡的经典转场，游戏里由代码驱动 uProgress。',
+      detail: [
+        'mask = smoothstep(edge0, edge0-softness, r)：softness 控制边缘羽化',
+        'ring 在圆边缘处取 1，乘 uWipeColor 做发光描边',
+        '拖动 uProgress 0→1→0 预览完整转场；配合顶部"录制"按钮可导出转场动画',
+      ],
+    },
+  },
 ];

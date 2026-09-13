@@ -99,42 +99,43 @@ export function LeftPanel() {
 function SceneSection() {
   const resScale = useStore((s) => s.resScale);
   const showFps = useStore((s) => s.showFps);
+  const backend = useStore((s) => s.backend);
+  const geometryOverride = useStore((s) => s.geometryOverride);
   const presetId = useStore((s) => s.presetId);
   const preset = getAllPresets().find((p) => p.id === presetId);
   const isMesh = preset?.scene.kind === 'mesh';
-  void isMesh;
   return (
-      <div className="panel-section">
-        <h3>场景与性能</h3>
-        <div className="row">
-          <label>几何体</label>
-          <select
-            value={useStore.getState().geometryOverride}
-            onChange={(e) => {
-              useStore.getState().setGeometryOverride(e.target.value);
-              LogBus.info('场景', `几何体覆盖: ${e.target.value === 'auto' ? '跟随预设' : e.target.value}`);
-              const p = getAllPresets().find((x) => x.id === useStore.getState().presetId);
-              if (p) void bridge.loadPreset(p, { silent: true });
-            }}
-          >
-            <option value="auto">跟随预设</option>
-            <option value="sphere">球体</option>
-            <option value="icosphere">Icosphere 均匀球</option>
-            <option value="torus">环面</option>
-            <option value="torusKnot">环面结</option>
-            <option value="cube">立方体</option>
-            <option value="cylinder">圆柱</option>
-            <option value="plane">平面</option>
-          </select>
-        </div>
-        <div className="row">
-          <label>分辨率</label>
-          <input
-            type="range" min={0.35} max={1.5} step={0.05} value={resScale}
-            onChange={(e) => { useStore.getState().setResScale(parseFloat(e.target.value)); bridge.applyRuntimeOptions(); }}
-          />
-          <span className="val">{Math.round(resScale * 100)}%</span>
-        </div>
+    <div className="panel-section">
+      <h3>场景与性能</h3>
+      <div className="row">
+        <label>几何体</label>
+        <select
+          value={geometryOverride}
+          onChange={(e) => {
+            useStore.getState().setGeometryOverride(e.target.value);
+            LogBus.info('场景', `几何体覆盖: ${e.target.value === 'auto' ? '跟随预设' : e.target.value}`);
+            const p = getAllPresets().find((x) => x.id === useStore.getState().presetId);
+            if (p) void bridge.loadPreset(p, { silent: true });
+          }}
+        >
+          <option value="auto">跟随预设</option>
+          <option value="sphere">球体</option>
+          <option value="icosphere">Icosphere 均匀球</option>
+          <option value="torus">环面</option>
+          <option value="torusKnot">环面结</option>
+          <option value="cube">立方体</option>
+          <option value="cylinder">圆柱</option>
+          <option value="plane">平面</option>
+        </select>
+      </div>
+      <div className="row">
+        <label>分辨率</label>
+        <input
+          type="range" min={0.35} max={1.5} step={0.05} value={resScale}
+          onChange={(e) => { useStore.getState().setResScale(parseFloat(e.target.value)); bridge.applyRuntimeOptions(); }}
+        />
+        <span className="val">{Math.round(resScale * 100)}%</span>
+      </div>
       <div className="row">
         <label>统计浮层</label>
         <label className="checkbox-row">
@@ -144,13 +145,13 @@ function SceneSection() {
       </div>
       <div className="row">
         <label>渲染内核</label>
-        <select value={useStore.getState().backend} onChange={(e) => LogBus.info('内核', `当前渲染内核: ${e.target.value}`)}>
+        <select value={backend} onChange={(e) => LogBus.info('内核', `当前渲染内核: ${e.target.value}`)}>
           <option value="webgl2">WebGL2（GLSL）</option>
           <option value="webgpu">WebGPU（WGSL）</option>
         </select>
       </div>
       <div style={{ color: 'var(--text-faint)', fontSize: 11, lineHeight: 1.6, marginTop: 4 }}>
-        WGSL 预设自动切换到 WebGPU；低配设备可下调分辨率缩放提升流畅度。
+        {isMesh ? '几何体覆盖会把任意材质放到任意模型上。' : 'WGSL 预设自动切换到 WebGPU；低配设备可下调分辨率缩放提升流畅度。'}
       </div>
     </div>
   );

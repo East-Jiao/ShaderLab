@@ -6,7 +6,10 @@ export const BUILTIN_UNIFORMS = new Set([
   'uCamPos', 'uCamRot', 'uView', 'uProjection', 'uViewProj', 'uModel', 'uNormalMatrix',
   'uNear', 'uFar', 'uSceneTex', 'uNormalTex', 'uSceneDepth',
   // 阴影系统（内核渲染阴影贴图并自动填充）
-  'uLightDir', 'uLightViewProj', 'uShadowMap',
+  'uLightDir', 'uLightViewProj', 'uShadowMap', 'uShadowTexel',
+  // Shadertoy 兼容层（iChannel0-3 除外：它们是用户可换的纹理槽）
+  'iTime', 'iTimeDelta', 'iFrame', 'iResolution', 'iMouse', 'iCamPos', 'iCamRot',
+  'iDate', 'iChannelResolution',
 ]);
 
 export function createGL(canvas: HTMLCanvasElement): WebGL2RenderingContext | null {

@@ -11,6 +11,7 @@ import {
   StreamLanguage, bracketMatching, indentOnInput, syntaxHighlighting, HighlightStyle, foldGutter,
 } from '@codemirror/language';
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+import { autocompletion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { tags as t } from '@lezer/highlight';
 
 // ---------- 词法器工厂 ----------
@@ -150,6 +151,33 @@ const highlight = HighlightStyle.define([
   { tag: t.punctuation, color: 'var(--text-dim)' },
 ]);
 
+// ---------- 自动补全 ----------
+
+/** 内核按场景自动供应的 uniform（补全提示用） */
+export const KERNEL_UNIFORM_HINTS: Record<'fullscreen' | 'mesh' | 'post', string[]> = {
+  fullscreen: ['uTime', 'uDeltaTime', 'uFrame', 'uResolution', 'uInvResolution', 'uMouse', 'uCamPos', 'uCamRot'],
+  mesh: ['uTime', 'uDeltaTime', 'uModel', 'uView', 'uProjection', 'uViewProj', 'uNormalMatrix', 'uCamPos', 'uLightDir', 'uLightViewProj', 'uShadowMap', 'uShadowTexel'],
+  post: ['uTime', 'uResolution', 'uNear', 'uFar', 'uSceneTex', 'uNormalTex', 'uSceneDepth'],
+};
+export const SHADERTOY_HINTS = ['iTime', 'iTimeDelta', 'iFrame', 'iResolution', 'iMouse', 'iCamPos', 'iCamRot', 'iChannel0', 'iChannel1', 'iChannel2', 'iChannel3'];
+
+const BUILTIN_INFO = '内核内置 uniform —— 每帧自动供应，直接声明即可使用';
+
+function makeCompletionSource(getSpec: () => ModeSpec, getHints: () => string[]) {
+  return (ctx: CompletionContext): CompletionResult | null => {
+    const word = ctx.matchBefore(/[\w]/);
+    if (!word || (word.from === word.to && !ctx.explicit)) return null;
+    const spec = getSpec();
+    const options = [
+      ...spec.builtins.map((k) => ({ label: k, type: 'function', boost: 1 })),
+      ...spec.types.map((k) => ({ label: k, type: 'type' })),
+      ...spec.keywords.map((k) => ({ label: k, type: 'keyword', boost: -1 })),
+      ...getHints().map((k) => ({ label: k, type: 'variable', info: BUILTIN_INFO })),
+    ];
+    return { from: word.from, options, validFor: /^[\w]*$/ };
+  };
+}
+
 // ---------- 错误行高亮 ----------
 
 export const setErrorsEffect = StateEffect.define<number[]>();
@@ -182,21 +210,28 @@ interface CodeEditorProps {
   errorLines: number[];
   onChange: (code: string) => void;
   onApply: () => void;
+  /** 补全提示的内核 uniform 列表（按场景） */
+  hints?: string[];
 }
 
-export function CodeEditor({ code, mode, errorLines, onChange, onApply }: CodeEditorProps) {
+export function CodeEditor({ code, mode, errorLines, onChange, onApply, hints = [] }: CodeEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   const onApplyRef = useRef(onApply);
   const codeRef = useRef(code);
+  const modeRef = useRef(mode);
+  const hintsRef = useRef(hints);
   onChangeRef.current = onChange;
   onApplyRef.current = onApply;
   codeRef.current = code;
+  modeRef.current = mode;
+  hintsRef.current = hints;
 
   useEffect(() => {
     if (!hostRef.current) return;
     const spec = mode === 'wgsl' ? WGSL_MODE : mode === 'hlsl' ? HLSL_MODE : mode === 'toy' ? TOY_MODE : GLSL_MODE;
+    const completionSource = makeCompletionSource(() => modeRef.current === 'wgsl' ? WGSL_MODE : modeRef.current === 'hlsl' ? HLSL_MODE : modeRef.current === 'toy' ? TOY_MODE : GLSL_MODE, () => hintsRef.current);
     const extensions: Extension[] = [
       lineNumbers(),
       foldGutter(),
@@ -213,6 +248,7 @@ export function CodeEditor({ code, mode, errorLines, onChange, onApply }: CodeEd
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
       makeStreamMode(spec),
       syntaxHighlighting(highlight),
+      autocompletion({ override: [completionSource], activateOnTyping: true }),
       errorField,
       EditorView.lineWrapping,
       EditorView.updateListener.of((update) => {

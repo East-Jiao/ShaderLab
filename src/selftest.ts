@@ -27,7 +27,7 @@ export async function runSelfTest() {
   await sleep(400);
 
   const presets = getAllPresets();
-  const results: { id: string; name: string; language: string; backend: string; ok: boolean; skipped?: boolean; errors?: string[] }[] = [];
+  const results: { id: string; name: string; language: string; backend: string; ok: boolean; skipped?: boolean; errors?: string[]; pixel?: number[] | null }[] = [];
 
   for (const p of presets) {
     const lang = languages.require(p.language);
@@ -42,9 +42,16 @@ export async function runSelfTest() {
       const s = useStore.getState();
       const errors = s.passReports.flatMap((r) => r.errors.map((e) => `「${r.name}」L${e.line}: ${e.message}`));
       const ok = s.compileOk === true;
-      results.push({ id: p.id, name: p.name, language: p.language, backend: s.backend, ok, errors });
-      if (ok) LogBus.ok('自检', `✅ ${p.name} [${p.language}] 通过 (${s.backend})`);
-      else LogBus.error('自检', `❌ ${p.name} [${p.language}] 失败`, errors.join('\n'));
+      // 画面亮度采样（仅 WebGL2 后端；全黑/全 NaN 视为可疑）
+      const pixel = s.backend === 'webgl2' ? bridge.sampleCenterPixel() : null;
+      const bright = pixel ? Math.max(...pixel) : 255;
+      results.push({ id: p.id, name: p.name, language: p.language, backend: s.backend, ok, errors, pixel });
+      if (ok) {
+        if (pixel && bright < 8) LogBus.warn('自检', `✅ ${p.name} 编译通过，⚠️ 画面疑似全黑 (RGB=${pixel})`);
+        else LogBus.ok('自检', `✅ ${p.name} [${p.language}] 通过 (${s.backend}, 亮度 ${bright})`);
+      } else {
+        LogBus.error('自检', `❌ ${p.name} [${p.language}] 失败`, errors.join('\n'));
+      }
     } catch (err) {
       results.push({ id: p.id, name: p.name, language: p.language, backend: '-', ok: false, errors: [String(err)] });
       LogBus.error('自检', `❌ ${p.name} 异常`, String(err));

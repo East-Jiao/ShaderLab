@@ -24,11 +24,13 @@ export function App() {
     bridge.applyRuntimeOptions();
   }, [theme]);
 
-  // 初始加载上次的预设
+  // 初始加载上次的预设（内置或"我的预设"）
   useEffect(() => {
     const preset = findPreset(presetId);
     if (preset) {
       void bridge.loadPreset(preset);
+    } else if (presetId.startsWith('my-') && bridge.getMyPreset(presetId)) {
+      bridge.loadMyPreset(presetId);
     } else {
       const first = findPreset('fs-neon-plasma')!;
       void bridge.loadPreset(first);

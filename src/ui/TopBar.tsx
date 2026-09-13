@@ -33,6 +33,9 @@ export function TopBar() {
   const backend = useStore((s) => s.backend);
   const dirty = useStore((s) => s.dirty);
   const compileOk = useStore((s) => s.compileOk);
+  const timeScale = useStore((s) => s.timeScale);
+  const showFps = useStore((s) => s.showFps);
+  const resScale = useStore((s) => s.resScale);
   const preset = findPreset(presetId);
   const lang = preset ? languages.get(preset.language) : undefined;
 
@@ -67,15 +70,15 @@ export function TopBar() {
       <Menu label="视图">
         {(close) => (
           <>
-            <button onClick={() => { useStore.getState().setShowFps(!useStore.getState().showFps); close(); }}>
-              {useStore.getState().showFps ? '✓ ' : ''}显示性能统计
+            <button onClick={() => { useStore.getState().setShowFps(!showFps); close(); }}>
+              {showFps ? '✓ ' : ''}显示性能统计
             </button>
             <button onClick={() => { useStore.getState().toggleTheme(); close(); }}>🌗 切换深/浅色主题</button>
             <div className="sep" />
             <div className="label">分辨率缩放</div>
             {[0.5, 0.75, 1, 1.5].map((v) => (
               <button key={v} onClick={() => { useStore.getState().setResScale(v); bridge.applyRuntimeOptions(); close(); }}>
-                {useStore.getState().resScale === v ? '✓ ' : ''}{v * 100}%
+                {resScale === v ? '✓ ' : ''}{v * 100}%
               </button>
             ))}
           </>
@@ -107,7 +110,7 @@ export function TopBar() {
       </button>
       <select
         title="时间缩放"
-        value={useStore.getState().timeScale}
+        value={timeScale}
         onChange={(e) => { useStore.getState().setTimeScale(parseFloat(e.target.value)); bridge.applyRuntimeOptions(); }}
       >
         {[0.1, 0.25, 0.5, 1, 2, 4].map((v) => (

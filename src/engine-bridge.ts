@@ -14,6 +14,7 @@ let glCanvas: HTMLCanvasElement | null = null;
 let gpuCanvas: HTMLCanvasElement | null = null;
 let currentPreset: Preset | null = null;
 let loadSeq = 0;
+let quietCompile = false; // 实时编译时抑制成功类日志（错误仍然输出）
 const recorder = new CanvasRecorder();
 
 const darkBG: [number, number, number] = [0.085, 0.095, 0.115];
@@ -45,12 +46,10 @@ export function initBridge(glC: HTMLCanvasElement, gpuC: HTMLCanvasElement) {
   gl2.onCompile = (r) => {
     useStore.getState().setCompile(r.ok, r.passes, r.metas);
     for (const p of r.passes) {
-      if (p.ok) LogBus.gpu('编译', `Pass「${p.name}」编译通过`);
-      else {
-        LogBus.error('编译', `Pass「${p.name}」编译失败`, p.errors.map((e) => `L${e.line}: ${e.message}`).join('\n'));
-      }
+      if (p.ok) { if (!quietCompile) LogBus.gpu('编译', `Pass「${p.name}」编译通过`); }
+      else LogBus.error('编译', `Pass「${p.name}」编译失败`, p.errors.map((e) => `L${e.line}: ${e.message}`).join('\n'));
     }
-    LogBus.info('反射', `发现 ${r.metas.length} 个可调 uniform`);
+    if (!quietCompile) LogBus.info('反射', `发现 ${r.metas.length} 个可调 uniform`);
     syncDefaultsToStore(r.metas);
   };
   gl2.onStats = (s) => useStore.getState().setStats(s);
@@ -118,7 +117,7 @@ export async function loadPreset(preset: Preset, opts: { silent?: boolean } = {}
         wgpu.onCompile = (r) => {
           useStore.getState().setCompile(r.ok, r.passes, r.metas);
           for (const p of r.passes) {
-            if (p.ok) LogBus.gpu('编译', `Pass「${p.name}」编译通过`);
+            if (p.ok) { if (!quietCompile) LogBus.gpu('编译', `Pass「${p.name}」编译通过`); }
             else LogBus.error('编译', `Pass「${p.name}」编译失败`, p.errors.map((e) => `L${e.line}: ${e.message}`).join('\n'));
           }
           syncDefaultsToStore(r.metas);
@@ -153,17 +152,21 @@ export async function loadPreset(preset: Preset, opts: { silent?: boolean } = {}
   gl2?.setPreset(effective, passes, currentValues());
 }
 
-/** 应用编辑器中的代码（翻译 -> 编译 -> 更新检查器） */
-export async function applyEditedPasses(passes: PassDef[]) {
+/** 应用编辑器中的代码（翻译 -> 编译 -> 更新检查器）。silent=true 用于实时编译（抑制成功类日志） */
+export async function applyEditedPasses(passes: PassDef[], silent = false) {
   if (!currentPreset) return;
-  const s = useStore.getState();
   const lang = languages.require(currentPreset.language);
-  LogBus.info('编译', '应用编辑器代码…');
-  if (lang.backend === 'webgpu') {
-    if (wgpu) await wgpu.setPreset(currentPreset, passes, currentValues());
-  } else {
-    const translated = lang.translate ? lang.translate(passes.map((p) => ({ ...p })), currentPreset.scene) : passes;
-    gl2?.setPreset(currentPreset, translated, currentValues());
+  if (!silent) LogBus.info('编译', '应用编辑器代码…');
+  quietCompile = silent;
+  try {
+    if (lang.backend === 'webgpu') {
+      if (wgpu) await wgpu.setPreset(currentPreset, passes, currentValues());
+    } else {
+      const translated = lang.translate ? lang.translate(passes.map((p) => ({ ...p })), currentPreset.scene) : passes;
+      gl2?.setPreset(currentPreset, translated, currentValues());
+    }
+  } finally {
+    quietCompile = false;
   }
 }
 
@@ -320,6 +323,24 @@ export function isRecording() {
 export function setMouse(x: number, y: number, down: boolean) {
   gl2?.setMouse(x, y, down);
   wgpu?.setMouse(x, y, down);
+}
+
+/** 自检用：渲染数帧后采样视口多点像素（各通道取最大），捕捉黑屏/NaN 类回归 */
+export function sampleCenterPixel(): number[] | null {
+  if (!gl2) return null;
+  const gl = gl2.gl;
+  const c = gl2.canvas;
+  const pts: [number, number][] = [[0.5, 0.5], [0.35, 0.5], [0.65, 0.5], [0.5, 0.35], [0.5, 0.62]];
+  const out = [0, 0, 0];
+  for (let i = 0; i < 4; i++) {
+    gl2.renderOnce();
+    for (const [fx, fy] of pts) {
+      const buf = new Uint8Array(4);
+      gl.readPixels(Math.floor(c.width * fx), Math.floor(c.height * (1 - fy)), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+      for (let k = 0; k < 3; k++) out[k] = Math.max(out[k], buf[k]);
+    }
+  }
+  return out;
 }
 
 export function disposeBridge() {

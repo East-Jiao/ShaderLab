@@ -1,7 +1,14 @@
 // 程序化纹理生成（离线 Canvas 绘制，无需外部资源即可运行）
 export type TextureId =
   | 'white' | 'black' | 'checker' | 'uvgrid' | 'noise' | 'brick' | 'stripes' | 'gradient' | 'matcap' | 'rings'
-  | 'normalmap';
+  | 'normalmap' | 'ramp' | 'facesdf';
+
+const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+const mixN = (a: number, b: number, t: number) => a + (b - a) * t;
+const sstep = (e0: number, e1: number, x: number) => {
+  const t = clamp01((x - e0) / (e1 - e0));
+  return t * t * (3 - 2 * t);
+};
 
 const SIZE = 256;
 
@@ -191,6 +198,55 @@ const generators: Record<TextureId, (ctx: CanvasRenderingContext2D, size: number
     }
     ctx.putImageData(img, 0, 0);
   },
+
+  /**
+   * 卡通渲染 Ramp 渐变条（原神式）：横轴 = N·L 半兰伯特值。
+   * 三段软硬结合的阶梯，暗部偏冷紫、亮部偏暖白 —— 暗部"混色"而非"压暗"是米哈游系关键。
+   */
+  ramp: (ctx, s) => {
+    // 注意：画布是 s×s，必须整幅填充（Ramp 只用横轴，竖向恒定）
+    const img = ctx.createImageData(s, s);
+    for (let x = 0; x < s; x++) {
+      const t = x / (s - 1);
+      const step1 = sstep(0.30, 0.38, t);   // 明暗交界（较硬）
+      const step2 = sstep(0.58, 0.95, t);   // 亮部过渡（较软）
+      let r = 0.36, g = 0.33, b = 0.5;                    // 最暗（冷紫）
+      r = mixN(r, 0.66, step1); g = mixN(g, 0.55, step1); b = mixN(b, 0.62, step1);
+      r = mixN(r, 1.0, step2); g = mixN(g, 0.97, step2); b = mixN(b, 0.93, step2);
+      for (let y = 0; y < s; y++) {
+        const i = (y * s + x) * 4;
+        img.data[i] = Math.floor(r * 255);
+        img.data[i + 1] = Math.floor(g * 255);
+        img.data[i + 2] = Math.floor(b * 255);
+        img.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  },
+
+  /**
+   * 二次元脸部阴影 SDF 近似（原神面阴影技法用图）：
+   * 灰度 = 0.5 + 有符号距离（1 = 发影核心恒阴影，0.5 = 阴影边界，0 = 恒受光）。
+   * 真实项目中由脸部网格在各光照角度下烘焙得到。
+   */
+  facesdf: (ctx, s) => {
+    const img = ctx.createImageData(s, s);
+    const sdEllipse = (px: number, py: number, cx: number, cy: number, rx: number, ry: number) =>
+      (Math.hypot((px - cx) / rx, (py - cy) / ry) - 1) * Math.min(rx, ry);
+    for (let y = 0; y < s; y++) {
+      for (let x = 0; x < s; x++) {
+        const d1 = sdEllipse(x, y, s * 0.47, s * 0.02, s * 0.44, s * 0.30); // 刘海（略偏左）
+        const d2 = sdEllipse(x, y, s * 0.05, s * 0.40, s * 0.15, s * 0.36); // 左侧发绺（大）
+        const d3 = sdEllipse(x, y, s * 0.95, s * 0.42, s * 0.11, s * 0.30); // 右侧发绺（小）
+        const d = Math.min(d1, d2, d3);
+        const v = clamp01(0.5 - d / (s * 0.22));
+        const g8 = Math.floor(v * 255);
+        const i = (y * s + x) * 4;
+        img.data[i] = g8; img.data[i + 1] = g8; img.data[i + 2] = g8; img.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  },
 };
 
 export interface TextureLibrary {
@@ -203,7 +259,7 @@ export function createTextureLibrary(): TextureLibrary {
   const labels: Record<TextureId, string> = {
     white: '纯白', black: '纯黑', checker: '棋盘格', uvgrid: 'UV 网格', noise: '噪声图',
     brick: '砖墙', stripes: '条纹', gradient: '渐变', matcap: 'MatCap 金属', rings: '年轮',
-    normalmap: '砖墙法线贴图',
+    normalmap: '砖墙法线贴图', ramp: '卡渲 Ramp 渐变条', facesdf: '脸部阴影 SDF',
   };
   return {
     get(id) {

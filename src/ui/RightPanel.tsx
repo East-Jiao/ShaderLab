@@ -147,11 +147,11 @@ function UniformRow({ meta }: { meta: UniformMeta }) {
   );
 }
 
-const TEXTURES = ['white', 'black', 'checker', 'uvgrid', 'noise', 'brick', 'stripes', 'gradient', 'matcap', 'rings', 'normalmap'];
+const TEXTURES = ['white', 'black', 'checker', 'uvgrid', 'noise', 'brick', 'stripes', 'gradient', 'matcap', 'rings', 'normalmap', 'ramp', 'facesdf'];
 const TEXTURE_LABELS: Record<string, string> = {
   white: '纯白', black: '纯黑', checker: '棋盘格', uvgrid: 'UV 网格', noise: '噪声图',
   brick: '砖墙', stripes: '条纹', gradient: '渐变', matcap: 'MatCap 金属', rings: '年轮',
-  normalmap: '砖墙法线贴图',
+  normalmap: '砖墙法线贴图', ramp: '卡渲 Ramp 渐变条', facesdf: '脸部阴影 SDF',
 };
 
 function Inspector() {

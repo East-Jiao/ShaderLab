@@ -49,6 +49,7 @@ out vec4 fragColor;
 uniform vec3 uBaseColor;
 uniform vec3 uLineColor;
 uniform vec3 uLightDir;
+uniform vec2 uShadowTexel;
 uniform sampler2D uShadowMap;
 
 // PCF 阴影（Reeves et al. 1983 + 坡度缩放偏移）
@@ -58,10 +59,9 @@ float getShadowFloor(vec4 shadowCoord) {
   vec3 N = vec3(0.0, 1.0, 0.0);
   float bias = max(0.0012 * (1.0 - dot(N, uLightDir)), 0.0004);
   float shadow = 0.0;
-  vec2 texel = vec2(1.0 / 1024.0);
   for (int x = -1; x <= 1; x++) {
     for (int y = -1; y <= 1; y++) {
-      float d = texture(uShadowMap, sc.xy + vec2(float(x), float(y)) * texel).r;
+      float d = texture(uShadowMap, sc.xy + vec2(float(x), float(y)) * uShadowTexel).r;
       shadow += (sc.z - bias > d) ? 0.0 : 1.0;
     }
   }
@@ -141,7 +141,7 @@ void main(){ vUV = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }`;
 // ---- 阴影贴图（Shadow Mapping, Williams 1978；采样端 PCF 见代码片段库） ----
 // 平行光从固定方向照亮原点，正交投影覆盖模型与地面；
 // 声明了 uShadowMap 的用户 Pass 会自动得到阴影贴图与光照矩阵。
-const SHADOW_SIZE = 1024;
+const SHADOW_SIZE = 2048;
 export const LIGHT_DIR: Vec3 = (() => {
   const l = Math.hypot(0.55, 0.75, 0.45);
   return [0.55 / l, 0.75 / l, 0.45 / l];
@@ -277,6 +277,7 @@ export class WebGL2Renderer {
     // 释放旧程序
     for (const p of this.passes) gl.deleteProgram(p.prog.program);
     this.passes = [];
+    this.samplerCache.clear();
 
     const reports: PassReport[] = [];
     const perPassUniforms: CompiledUniform[][] = [];
@@ -436,15 +437,37 @@ export class WebGL2Renderer {
     // 阴影系统内置 uniform
     if (has('uLightDir')) gl.uniform3fv(L('uLightDir'), LIGHT_DIR);
     if (has('uLightViewProj')) gl.uniformMatrix4fv(L('uLightViewProj'), false, this.lightViewProj);
+    if (has('uShadowTexel')) gl.uniform2f(L('uShadowTexel'), 1 / SHADOW_SIZE, 1 / SHADOW_SIZE);
+    // Shadertoy 兼容层（iTime/iResolution 等由内核每帧供应，用户无需关心）
+    if (has('iTime')) gl.uniform1f(L('iTime'), this.time);
+    if (has('iTimeDelta')) gl.uniform1f(L('iTimeDelta'), this.dtLast);
+    if (has('iFrame')) gl.uniform1i(L('iFrame'), this.frame);
+    if (has('iResolution')) gl.uniform3f(L('iResolution'), this.canvas.width, this.canvas.height, this.canvas.width / this.canvas.height);
+    if (has('iMouse')) gl.uniform4fv(L('iMouse'), this.mouse);
+    if (has('iCamPos')) gl.uniform3fv(L('iCamPos'), this.camera.eye);
+    if (has('iCamRot')) gl.uniformMatrix3fv(L('iCamRot'), false, this.camBasis);
     if (extra) for (const fn of Object.values(extra)) fn();
   }
 
+  private samplerCache = new Map<GLProgram, Map<number, { name: string; unit: number }[]>>();
+
   private userSamplerUnits(prog: GLProgram, baseUnit: number): { name: string; unit: number }[] {
-    // 按名称稳定排序分配纹理单元（内置场景纹理 uSceneTex 等由 bindBuiltins 绑定，跳过）
-    const samplers = prog.uniforms
-      .filter((u) => u.type === 'sampler2D' && !BUILTIN_UNIFORMS.has(u.name))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    return samplers.map((u, i) => ({ name: u.name, unit: baseUnit + i }));
+    // 按名称稳定排序分配纹理单元（内置场景纹理 uSceneTex 等由 bindBuiltins 绑定，跳过）。
+    // 分配结果只与 (program, baseUnit) 有关 —— 缓存起来，避免每帧排序分配。
+    let byUnit = this.samplerCache.get(prog);
+    if (!byUnit) {
+      byUnit = new Map();
+      this.samplerCache.set(prog, byUnit);
+    }
+    let list = byUnit.get(baseUnit);
+    if (!list) {
+      list = prog.uniforms
+        .filter((u) => u.type === 'sampler2D' && !BUILTIN_UNIFORMS.has(u.name))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((u, i) => ({ name: u.name, unit: baseUnit + i }));
+      byUnit.set(baseUnit, list);
+    }
+    return list;
   }
 
   private bindUserUniforms(prog: GLProgram, baseUnit: number) {
@@ -460,6 +483,7 @@ export class WebGL2Renderer {
     }
     for (const u of prog.uniforms) {
       if (u.type === 'sampler2D') continue;
+      if (BUILTIN_UNIFORMS.has(u.name)) continue; // 内置 uniform 由内核供应，拒绝（可能过期的）用户值覆盖
       const v = this.values[u.name];
       if (v === undefined) continue;
       const arr = Array.isArray(v) ? v.map(Number) : [Number(v)];
@@ -672,7 +696,15 @@ export class WebGL2Renderer {
       uNormalTex: () => gl.uniform1i(pass.prog.locations.get('uNormalTex')!, 1),
       uSceneDepth: () => gl.uniform1i(pass.prog.locations.get('uSceneDepth')!, 2),
     });
-    this.bindUserUniforms(pass.prog, 3);
+    const userSamplers = this.bindUserUniforms(pass.prog, 3);
+    // Shadertoy 方言约定：后处理场景中 iChannel0/1/2 = 场景颜色/法线/深度（覆盖默认纹理库绑定）
+    for (const { name, unit } of userSamplers) {
+      const target =
+        name === 'iChannel0' ? rt.colorTex :
+        name === 'iChannel1' ? rt.normalTex :
+        name === 'iChannel2' ? rt.depthTex : null;
+      if (target) rt.bindTexture(target, unit);
+    }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
     gl.enable(gl.DEPTH_TEST);
@@ -695,6 +727,7 @@ export class WebGL2Renderer {
   dispose() {
     this.stop();
     const gl = this.gl;
+    this.samplerCache.clear();
     for (const p of this.passes) gl.deleteProgram(p.prog.program);
     gl.deleteProgram(this.floorProg.program);
     gl.deleteProgram(this.galleryProg.program);

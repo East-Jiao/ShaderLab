@@ -4,7 +4,7 @@ import { useStore } from '../state/store';
 import { languages } from '../languages';
 import { findPreset } from '../presets';
 import * as bridge from '../engine-bridge';
-import { CodeEditor } from './CodeEditor';
+import { CodeEditor, KERNEL_UNIFORM_HINTS, SHADERTOY_HINTS } from './CodeEditor';
 import { LogBus, LogBus as Bus } from '../logs';
 import type { LogEntry } from '../engine/types';
 import { explainShader, suggestForError, lintShader, type ExplainResult } from '../assist/ai';
@@ -39,6 +39,25 @@ function CodeTab() {
   const code = pass ? (part === 'vs' && pass.vs ? pass.vs : pass.fs) : '';
   const mode = (lang?.editorMode || 'glsl') as 'glsl' | 'hlsl' | 'wgsl' | 'toy';
   const errorLines = useMemo(() => (report && !report.ok ? report.errors.map((e) => e.line) : []), [report]);
+  const liveCompile = useStore((s) => s.liveCompile);
+  const dirtyFlag = useStore((s) => s.dirty);
+
+  // 实时编译：输入停顿 800ms 后自动应用（防抖）；静默模式只报错误
+  useEffect(() => {
+    if (!liveCompile || !dirtyFlag || !passes.length) return;
+    const timer = setTimeout(() => {
+      void bridge.applyEditedPasses(passes.map((p) => ({ ...p })), true);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [passes, dirtyFlag, liveCompile]);
+
+  const hints = useMemo(() => {
+    if (!preset) return [];
+    if (preset.language === 'shadertoy') return SHADERTOY_HINTS;
+    return preset.scene.kind === 'mesh' ? KERNEL_UNIFORM_HINTS.mesh
+      : preset.scene.kind === 'post' ? KERNEL_UNIFORM_HINTS.post
+      : KERNEL_UNIFORM_HINTS.fullscreen;
+  }, [preset]);
 
   if (!pass || !preset) {
     return <div style={{ padding: 20, color: 'var(--text-faint)' }}>加载预设中…</div>;
@@ -105,6 +124,14 @@ function CodeTab() {
           >
             📋 载入模板
           </button>
+          <label className="checkbox-row" title="输入停顿后自动应用并编译">
+            <input
+              type="checkbox"
+              checked={liveCompile}
+              onChange={(e) => useStore.getState().setLiveCompile(e.target.checked)}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>实时编译</span>
+          </label>
           {dirty && <span className="dirty">● 未应用的修改</span>}
         </div>
         {showCompiled ? (
@@ -115,6 +142,7 @@ function CodeTab() {
             code={code}
             mode={mode}
             errorLines={errorLines}
+            hints={hints}
             onChange={(c) => useStore.getState().setPassCode(activePass, part, c)}
             onApply={apply}
           />
